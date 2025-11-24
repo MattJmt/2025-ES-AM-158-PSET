@@ -84,7 +84,7 @@ if [[ -n "$SPINE_ARCHIVE" ]] && [[ -z "${REBUILD}" ]]; then
     if [[ $CURL_TAR_RC -eq 0 ]]; then
         echo "✅ Simulation spine downloaded to cache, let's roll!"
         cd cache || exit
-        OUTPUT=$(./bullet_spine "${SPINE_ARGS[@]}" 2>&1)
+        OUTPUT=$(./bullet_spine "${SPINE_ARGS[@]}" 2>&1 | grep -v "rate limiter")
         SPINE_RC=$?
         # Return code 0 is from Ctrl-C (normal exit)
         # Return code 1 is from closing the simulation GUI

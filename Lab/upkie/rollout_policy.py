@@ -2,6 +2,8 @@
 import upkie.envs
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
+from gymnasium.wrappers import RecordVideo
+
 
 upkie.envs.register()
 
@@ -12,16 +14,21 @@ SEED = 0
 
 def main():
     env = make_vec_env(ENV_ID, n_envs=1, env_kwargs=ENV_KWARGS, seed=SEED)
-    model = PPO("MlpPolicy", env, device="auto")
+
+    # load model
+    model = PPO.load(MODEL_PATH, env=env, device="auto")
 
     obs = env.reset()
+
     ep_return = 0.0
     ep_len = 0
     while True:
+        # Step policy
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, dones, infos = env.step(action)
         ep_return += float(reward[0])
         ep_len += 1
+
         if bool(dones[0]):
             break
     print(f"[EVAL] return={ep_return:.3f}, length={ep_len} steps")

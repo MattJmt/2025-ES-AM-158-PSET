@@ -287,40 +287,113 @@ class UpkiePendulum(gym.Wrapper):
             return True
         return False
 
+    # def step(
+    #     self,
+    #     action: np.ndarray,
+    # ) -> Tuple[np.ndarray, float, bool, bool, dict]:
+    #     r"""!
+    #     Run one timestep of the environment's dynamics.
+
+    #     When the end of the episode is reached, you are responsible for calling
+    #     `reset()` to reset the environment's state.
+
+    #     \param action Action from the agent.
+    #     \return
+    #         - `observation`: Observation of the environment, i.e. an element
+    #           of its `observation_space`.
+    #         - `reward`: Reward returned after taking the action.
+    #         - `terminated`: Whether the agent reached a terminal state,
+    #           which may be a good or a bad thing. When true, the user needs to
+    #           call `reset()`.
+    #         - `truncated`: Whether the episode is reaching max number of
+    #           steps. This boolean can signal a premature end of the episode,
+    #           i.e. before a terminal state is reached. When true, the user
+    #           needs to call `reset()`.
+    #         - `info`: Dictionary with additional information, reporting in
+    #           particular the full observation dictionary coming from the spine.
+    #     """
+    #     spine_action = self.__get_spine_action(action)
+    #     _, reward, terminated, truncated, info = self.env.step(spine_action)
+    #     spine_observation = info["spine_observation"]
+    #     observation = self.__get_env_observation(spine_observation)
+    #     if self.__detect_fall(spine_observation):
+    #         terminated = True
+    #     self.time_stamp += 1
+    #     if self.env.max_time_steps is not None:
+    #         if self.time_stamp >= self.env.max_time_steps:
+    #             truncated = True
+    #             print("Max time steps reached.")
+    #     return observation, reward, terminated, truncated, info
+
     def step(
         self,
         action: np.ndarray,
     ) -> Tuple[np.ndarray, float, bool, bool, dict]:
-        r"""!
-        Run one timestep of the environment's dynamics.
 
-        When the end of the episode is reached, you are responsible for calling
-        `reset()` to reset the environment's state.
-
-        \param action Action from the agent.
-        \return
-            - `observation`: Observation of the environment, i.e. an element
-              of its `observation_space`.
-            - `reward`: Reward returned after taking the action.
-            - `terminated`: Whether the agent reached a terminal state,
-              which may be a good or a bad thing. When true, the user needs to
-              call `reset()`.
-            - `truncated`: Whether the episode is reaching max number of
-              steps. This boolean can signal a premature end of the episode,
-              i.e. before a terminal state is reached. When true, the user
-              needs to call `reset()`.
-            - `info`: Dictionary with additional information, reporting in
-              particular the full observation dictionary coming from the spine.
-        """
+        # Send command to spine simulation
         spine_action = self.__get_spine_action(action)
-        _, reward, terminated, truncated, info = self.env.step(spine_action)
+        _, _, _, _, info = self.env.step(spine_action)
+
         spine_observation = info["spine_observation"]
         observation = self.__get_env_observation(spine_observation)
+
+        # Extract useful scalars
+        theta = observation[0]
+        p = observation[1]
+        theta_dot = observation[2]
+        p_dot = observation[3]
+        a = float(action[0])
+
+        # -----------------------------
+        #   Termination Conditions
+        # -----------------------------
+        terminated = False
+        truncated = False
+
+        # Fall condition (already implemented)
         if self.__detect_fall(spine_observation):
             terminated = True
+
+        # Additional failure conditions
+        MAX_POSITION = 1.0      # meters
+        MAX_THETA_DOT = 10.0    # rad/s
+        MAX_P_DOT = 3.0         # m/s
+
+        if abs(p) > MAX_POSITION:
+            terminated = True
+
+        if abs(theta_dot) > MAX_THETA_DOT:
+            terminated = True
+
+        if abs(p_dot) > MAX_P_DOT:
+            terminated = True
+
+        # Time limit → truncated
         self.time_stamp += 1
-        if self.env.max_time_steps is not None:
-            if self.time_stamp >= self.env.max_time_steps:
-                truncated = True
-                print("Max time steps reached.")
-        return observation, reward, terminated, truncated, info
+        if (
+            self.env.max_time_steps is not None
+            and self.time_stamp >= self.env.max_time_steps
+        ):
+            truncated = True
+
+        # -----------------------------
+        #   Reward Function
+        # -----------------------------
+        # Stabilization reward shaping
+        w_theta = -5.0
+        w_theta_dot = -0.1
+        w_p = -0.5
+        w_p_dot = -0.05
+        w_action = -0.001
+        reward_alive = 1.0
+
+        reward = (
+            w_theta * theta**2
+            + w_theta_dot * theta_dot**2
+            + w_p * p**2
+            + w_p_dot * p_dot**2
+            + w_action * a**2
+            + reward_alive
+        )
+
+        return observation, float(reward), terminated, truncated, info
